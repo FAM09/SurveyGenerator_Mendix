@@ -1,0 +1,31 @@
+@import "custom-variables";
+
+.mx-dataview > .mx-dataview-content {
+    flex-grow: 1;
+    overflow-y: unset;
+}
+
+.field-required label::after {
+    content: " *";
+    color: #F44;
+    margin-left: 4px;
+}
+
+.field-required-text::after {
+    content: " *";
+    color: #F44;
+    margin-left: 4px;
+}
+
+.custom-validation{
+    min-height: auto !important;
+    .radio{
+        display: none !important;
+    }
+}
+
+.form {
+    border-radius: 12px; 
+    background-color: whitesmoke;
+    margin: 24px;
+}
