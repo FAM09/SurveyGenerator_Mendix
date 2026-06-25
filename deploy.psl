@@ -1,0 +1,8 @@
+# 1. Jalankan kompilasi ekspor .mda otomatis via Command Line Mendix
+# (Sesuaikan path versi Mendix Studio Pro yang Anda gunakan)
+& "C:\Program Files\Mendix\10.x.x.xxxx\modeler\mxutil.exe" export-app-package --project-file="SurveyGenerator.mpr" --output="project/SurveyGenerator_Latest.mda"
+
+# 2. Dorong langsung ke GitHub
+git add .
+git commit -m "build: auto export mda dan deploy"
+git push origin main

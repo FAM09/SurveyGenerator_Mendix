@@ -1,0 +1,72 @@
+name: Deploy Mendix Application to AWS EKS
+
+on:
+  push:
+    branches:
+      - main  # Berjalan otomatis setiap ada push ke branch main
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: mendix-app
+  EKS_CLUSTER_NAME: nama-cluster-eks-anda  # <--- MAS KETIK NAMA CLUSTER EKS ANDA DI SINI
+  DEPLOYMENT_NAME: mendix-app-deployment   # <--- MAS KETIK NAMA DEPLOYMENT K8S ANDA DI SINI
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Ambil kode aplikasi dari GitHub
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # 2. Login ke AWS menggunakan Secret Credentials
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # 3. Autentikasi ke Amazon ECR
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    # 4. Unduh Mendix Buildpack Resmi v6.0.5 (Berbasis UBI9)
+    - name: Clone Mendix Buildpack
+      run: |
+        git clone --branch v6.0.5 https://github.com/mendix/docker-mendix-buildpack.git buildpack-src
+        cp -r buildpack-src/* .
+
+    # 5. Proses Perakitan Image (Docker-in-Docker)
+    - name: Build, Tag, and Push Image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Build base rootfs bawaan Mendix
+        docker build -t mendix-rootfs:app -f rootfs-app.dockerfile .
+        docker build -t mendix-rootfs:builder -f rootfs-builder.dockerfile .
+        
+        # Kompilasi otomatis file .mda Anda
+        # Pastikan file .mda ditaruh di folder 'project/' di root repository nanti
+        python3 build.py --app-image mendix-rootfs:app --builder-image mendix-rootfs:builder ./project/*.mda
+        
+        # Push hasil final ke AWS ECR
+        docker tag mendix-rootfs:app $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    # 6. Set koneksi kubectl ke kluster EKS Anda
+    - name: Update Kubeconfig for EKS
+      run: |
+        aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+    # 7. Rollout Update ke EKS Pod (Zero Downtime)
+    - name: Deploy to Kubernetes EKS
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} mendix-app-container=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }}
